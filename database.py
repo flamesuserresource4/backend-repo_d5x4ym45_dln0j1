@@ -6,10 +6,11 @@ Import and use these functions in your API endpoints for database operations.
 """
 
 from pymongo import MongoClient
+from pymongo import DESCENDING
 from datetime import datetime, timezone
 import os
 from dotenv import load_dotenv
-from typing import Union
+from typing import Union, List, Dict, Any
 from pydantic import BaseModel
 
 # Load environment variables from .env file
@@ -52,4 +53,11 @@ def get_documents(collection_name: str, filter_dict: dict = None, limit: int = N
     if limit:
         cursor = cursor.limit(limit)
     
+    return list(cursor)
+
+def get_recent_documents(collection_name: str, filter_dict: Dict[str, Any] | None = None, limit: int = 10) -> List[Dict[str, Any]]:
+    """Get most recent documents sorted by created_at desc"""
+    if db is None:
+        raise Exception("Database not available. Check DATABASE_URL and DATABASE_NAME environment variables.")
+    cursor = db[collection_name].find(filter_dict or {}).sort("created_at", DESCENDING).limit(limit)
     return list(cursor)

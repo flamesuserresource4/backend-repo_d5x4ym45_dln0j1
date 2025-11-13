@@ -3,7 +3,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional
-from database import create_document
+from database import create_document, get_recent_documents
 
 app = FastAPI()
 
@@ -140,6 +140,36 @@ async def generate_content(payload: GenerateRequest):
         inserted_id = "no-db"
 
     return {"id": inserted_id, "outputs": outputs}
+
+# Recent generations endpoint for Library panel
+class RecentItem(BaseModel):
+    id: str
+    prompt: str
+    created_at: Optional[str] = None
+
+@app.get("/api/recent", response_model=list[RecentItem])
+async def recent_generations(limit: int = 9):
+    """Return recent generation metadata for the library preview"""
+    items = []
+    try:
+        docs = get_recent_documents('generation', limit=limit)
+        for d in docs:
+            items.append({
+                "id": str(d.get('_id')),
+                "prompt": d.get('prompt', 'Untitled'),
+                "created_at": d.get('created_at').isoformat() if d.get('created_at') else None,
+            })
+    except Exception:
+        # Fallback mocked items if DB unavailable
+        items = [
+            {"id": f"mock-{i}", "prompt": p, "created_at": None}
+            for i, p in enumerate([
+                "Product Launch Tweet",
+                "Feature Update Email",
+                "SEO Blog Outline",
+            ], start=1)
+        ]
+    return items
 
 if __name__ == "__main__":
     import uvicorn
