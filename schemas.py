@@ -41,8 +41,15 @@ class Product(BaseModel):
 # Add your own schemas here:
 # --------------------------------------------------
 
-# Note: The Flames database viewer will automatically:
-# 1. Read these schemas from GET /schema endpoint
-# 2. Use them for document validation when creating/editing
-# 3. Handle all database operations (CRUD) directly
-# 4. You don't need to create any database endpoints!
+class Generation(BaseModel):
+    """
+    Content generations created by the AI workflow
+    Collection name: "generation"
+    """
+    prompt: str = Field(..., description="User prompt or brief")
+    tone: str = Field(..., description="Selected tone, e.g., Professional, Playful")
+    sentiment: str = Field(..., description="Selected sentiment, e.g., Positive, Neutral, Urgent")
+    length: str = Field('Medium', description="Output length: Short | Medium | Long")
+    creativity: float = Field(0.35, ge=0.0, le=1.0, description="Creativity/temperature 0–1")
+    variants: int = Field(1, ge=1, le=5, description="How many variants to generate")
+    result: Optional[str] = Field(None, description="Generated content text")

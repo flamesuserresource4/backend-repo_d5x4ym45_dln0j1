@@ -1,6 +1,9 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import Optional
+from database import create_document
 
 app = FastAPI()
 
@@ -64,6 +67,79 @@ def test_database():
     
     return response
 
+# ----- Tone & Sentiment Workflow API -----
+class GenerateRequest(BaseModel):
+    prompt: str = Field(..., description="User prompt for generation")
+    tone: str = Field(..., description="Tone (Professional, Playful, Formal, Casual, etc.)")
+    sentiment: str = Field(..., description="Sentiment (Positive, Neutral, Urgent)")
+    length: str = Field("Medium", description="Short | Medium | Long")
+    creativity: float = Field(0.35, ge=0.0, le=1.0)
+    variants: int = Field(1, ge=1, le=5)
+
+class GenerateResponse(BaseModel):
+    id: str
+    outputs: list[str]
+
+@app.post("/api/generate", response_model=GenerateResponse)
+async def generate_content(payload: GenerateRequest):
+    """
+    Mock generation endpoint that returns stylized content matching tone/sentiment/length.
+    Persists request+result to DB as a Generation document.
+    """
+    # Simple heuristic generation to keep backend self-contained
+    tone_voice = {
+        "Professional": "Polished and concise.",
+        "Playful": "Light and witty.",
+        "Formal": "Respectful and structured.",
+        "Casual": "Friendly and direct.",
+    }.get(payload.tone, "Confident and clear.")
+
+    sentiment_hint = {
+        "Positive": "Emphasize benefits and momentum.",
+        "Neutral": "Stay informative and balanced.",
+        "Urgent": "Use action-forward phrasing.",
+    }.get(payload.sentiment, "Stay helpful.")
+
+    length_map = {
+        "Short": (18, 26),
+        "Medium": (40, 60),
+        "Long": (80, 120),
+    }
+    min_len, max_len = length_map.get(payload.length, (40, 60))
+
+    # Make a few variants
+    outputs: list[str] = []
+    base = payload.prompt.strip() or "Your product or idea"
+    for i in range(payload.variants):
+        guide = f"{payload.tone} • {payload.sentiment} • {payload.length}. {tone_voice} {sentiment_hint}"
+        core = f"{base} — crafted with ContentForge to help you move faster."
+        # very lightweight pseudo-variation using creativity
+        exclaim = "!" if payload.sentiment == "Urgent" or payload.creativity > 0.6 else "."
+        suffix = " Take the next step today" if payload.sentiment == "Urgent" else ""
+        text = f"{core} {guide}{exclaim}{suffix}"
+        # Trim/expand heuristically
+        if len(text.split()) < min_len:
+            text = text + " " + " ".join(["Learn more.", "Discover why.", "Built for teams.", "Effortless.", "Reliable."][: max(0, min_len - len(text.split()))])
+        outputs.append(text[: max_len * 2])
+
+    # Persist to DB
+    try:
+        from schemas import Generation as GenerationModel
+        doc = GenerationModel(
+            prompt=payload.prompt,
+            tone=payload.tone,
+            sentiment=payload.sentiment,
+            length=payload.length,
+            creativity=payload.creativity,
+            variants=payload.variants,
+            result="\n\n".join(outputs),
+        )
+        inserted_id = create_document('generation', doc)
+    except Exception as e:
+        # If DB is not available, still return outputs
+        inserted_id = "no-db"
+
+    return {"id": inserted_id, "outputs": outputs}
 
 if __name__ == "__main__":
     import uvicorn
